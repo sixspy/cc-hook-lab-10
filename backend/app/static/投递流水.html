@@ -28,26 +28,190 @@
       <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
     </header>
 
-<section class="卷">
-  <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
-  <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="投递钮">签名投递一次</button>
-  <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
-</section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th></tr></thead><tbody id="表"></tbody></table></div></section>
+    <!-- ============ hook-10 回放旁路 · 禁写现行 ============ -->
+    <section class="卷 hook10">
+      <h2>回放旁路 · 禁写现行　<small class="骨签">骨签 hook-10-回放旁路禁写现行</small></h2>
+      <p class="说明" id="形态说明">
+        <b>中文说明：</b>工程形态（整仓只兑现这一边）：<b>旁路账册</b>。对已投递事件点「回放」时，先签发
+        <b>回放令牌</b>（RP 开头，一次性，令牌核销与旁路账册写入同成同败），回放只写独立的旁路账册；
+        <b>写口隔离</b> 已开启——正式投递写口 <code>POST /api/投递</code> 见到回放令牌或回放标记，
+        一律「拒写口回刷」（409）。因此回放不会新增现行「已投递」行数，也不会抬高
+        <b>水位</b>。回放与正式投递按事件号打<b>同一把锁</b>（同一把并发投递锁，锁键
+        <code>hook-10:并发投递锁:&lt;事件号&gt;</code>），临界区内复检状态，杜绝并发脏写。流水与互证同票
+        （票号 <code>PIAO-&lt;事件号&gt;</code>）。
+      </p>
+
+      <div class="指标" id="水位卡">
+        <div class="卡"><small>现行水位（已投递行数）</small><b id="水位值">—</b></div>
+        <div class="卡"><small>正式成功流水</small><b id="正式成功值">—</b></div>
+        <div class="卡"><small>回放旁路笔数（不计水位）</small><b id="回放笔数值">—</b></div>
+        <div class="卡"><small>写口隔离</small><b id="写口隔离值">开启 · 拒回刷</b></div>
+      </div>
+
+      <div class="回放控制">
+        <label>事件号</label><input id="回放事件号" placeholder="EVT-demo-04" value="EVT-demo-04"/>
+        <label>理由</label><input id="回放理由" placeholder="对账补放"/>
+        <p class="消息" id="回放消息"></p>
+        <div class="按钮行">
+          <button class="按钮" type="button" id="回放钮">对已投递事件点回放（走旁路令牌）</button>
+          <button class="按钮 次" type="button" id="签令牌钮">只签发回放令牌</button>
+          <button class="按钮 次" type="button" id="夹具回放钮">灌「对已投递事件点回放夹具」并旁路回放</button>
+          <button class="按钮 危" type="button" id="拒刷钮">测试写口隔离：持回放令牌回刷正式写口（应 409 被拒）</button>
+        </div>
+        <p class="令牌展示">本次回放令牌：<code id="令牌展示">（尚未签发）</code>
+          　票号：<code id="票号展示">—</code>　锁键：<code id="锁键展示">—</code></p>
+        <pre id="回放结果" class="说明 结果盒"></pre>
+      </div>
+    </section>
+
+    <section class="卷">
+      <h2>旁路账册（影子轨 · 只读核对 · 不计现行投递）</h2>
+      <div class="表绕"><table>
+        <thead><tr><th>回放号</th><th>事件号</th><th>票号</th><th>回放令牌</th><th>端点键</th><th>签名摘要</th><th>中文命运</th><th>锁键</th><th>回放时</th></tr></thead>
+        <tbody id="回放表"></tbody>
+      </table></div>
+    </section>
+
+    <!-- ============ 现行正式投递 ============ -->
+    <section class="卷">
+      <h2>现行正式投递（只读正式投递集）</h2>
+      <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
+      <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
+      <p class="消息" id="消息"></p>
+      <button class="按钮" type="button" id="投递钮">签名投递一次</button>
+      <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
+    </section>
+    <section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>票号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
 <script>
+function 设消息(id, text, bad) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.className = '消息' + (bad ? ' 错' : ' 好');
+}
+
+async function 刷水位() {
+  try {
+    const w = await 投递台.getJSON('/api/水位');
+    document.getElementById('水位值').textContent = w.水位 ?? w.现行已投递 ?? '—';
+    document.getElementById('正式成功值').textContent = w.正式成功流水 ?? '—';
+    document.getElementById('回放笔数值').textContent = w.回放旁路笔数 ?? '0';
+    document.getElementById('写口隔离值').textContent = '开启 · 已拒回刷 ' + (w.拒写口回刷数 || 0) + ' 次';
+  } catch (e) { /* 未登录会跳登录 */ }
+}
+
+async function 刷回放表() {
+  const rows = await 投递台.getJSON('/api/回放');
+  const tb = document.getElementById('回放表'); tb.innerHTML = '';
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="9" class="空态">尚无回放。对 EVT-demo-04 点一次回放试试——只入旁路账册，不抬水位。</td></tr>';
+    return;
+  }
+  for (const r of rows) {
+    const tr = 投递台.行(
+      '<td>'+投递台.安全文本(r.回放号)+'</td>' +
+      '<td>'+投递台.安全文本(r.事件号)+'</td>' +
+      '<td>'+投递台.安全文本(r.票号)+'</td>' +
+      '<td><code>'+投递台.安全文本(r.回放令牌 || r.令牌)+'</code></td>' +
+      '<td>'+投递台.安全文本(r.端点键)+'</td>' +
+      '<td>'+投递台.安全文本(r.签名摘要)+'</td>' +
+      '<td></td><td><code>'+投递台.安全文本(r.锁键)+'</code></td>' +
+      '<td>'+投递台.安全文本(r.回放时)+'</td>'
+    );
+    tr.children[6].appendChild(投递台.徽章(r.中文命运 || r.状态));
+    tb.appendChild(tr);
+  }
+}
+
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/投递');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.尝试号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.签名摘要)+'</td><td></td><td>'+投递台.安全文本(r.响应码)+'</td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行(
+      '<td>'+投递台.安全文本(r.尝试号)+'</td>' +
+      '<td>'+投递台.安全文本(r.事件号)+'</td>' +
+      '<td>'+投递台.安全文本(r.票号 || ('PIAO-'+r.事件号))+'</td>' +
+      '<td>'+投递台.安全文本(r.端点键)+'</td>' +
+      '<td>'+投递台.安全文本(r.签名摘要)+'</td>' +
+      '<td></td>' +
+      '<td>'+投递台.安全文本(r.响应码)+'</td>' +
+      '<td></td>'
+    );
+    tr.children[5].appendChild(投递台.徽章(r.状态));
+    const btn = document.createElement('button');
+    btn.className = '按钮 次 小'; btn.type = 'button'; btn.textContent = '回放';
+    btn.title = '把该事件号填入回放框，走旁路令牌回放';
+    btn.onclick = () => {
+      document.getElementById('回放事件号').value = r.事件号;
+      document.getElementById('回放理由').focus();
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    };
+    tr.children[7].appendChild(btn);
+    tb.appendChild(tr);
   }
 }
+
+function 显令牌(j) {
+  const tok = j.回放令牌 || j.旁路令牌 || j.令牌 || '';
+  document.getElementById('令牌展示').textContent = tok;
+  document.getElementById('票号展示').textContent = j.票号 || j.同票 || '—';
+  document.getElementById('锁键展示').textContent = j.锁键 || '—';
+}
+
+document.getElementById('回放钮').onclick = async () => {
+  const eid = document.getElementById('回放事件号').value.trim();
+  try {
+    const j = await 投递台.postJSON('/api/回放', {
+      事件号: eid, 理由: document.getElementById('回放理由').value || '页面点回放',
+    });
+    显令牌(j);
+    document.getElementById('回放结果').textContent = JSON.stringify(j, null, 2);
+    设消息('回放消息', '旁路回放完成：' + (j.中文状态 || j.状态) + '；水位未抬。', false);
+    await Promise.all([刷水位(), 刷回放表(), 刷表()]);
+  } catch (e) { 设消息('回放消息', e.message, true); }
+};
+
+document.getElementById('签令牌钮').onclick = async () => {
+  const eid = document.getElementById('回放事件号').value.trim();
+  try {
+    const j = await 投递台.postJSON('/api/回放/令牌', {事件号: eid, 理由: '页面签发'});
+    显令牌(j);
+    设消息('回放消息', '已签发一次性回放令牌（尚未核销）：' + j.回放令牌, false);
+  } catch (e) { 设消息('回放消息', e.message, true); }
+};
+
+document.getElementById('夹具回放钮').onclick = async () => {
+  try {
+    const j = await 投递台.postJSON('/api/夹具回放/回放已投递事件', {});
+    const first = (j.回放 || [])[0] || {};
+    if (first.回放令牌) 显令牌(first);
+    document.getElementById('回放结果').textContent = JSON.stringify(j, null, 2);
+    设消息('回放消息', '夹具『对已投递事件点回放』已按旁路账册执行 ' + j.条数 + ' 笔，未抬水位。', false);
+    await Promise.all([刷水位(), 刷回放表(), 刷表()]);
+  } catch (e) { 设消息('回放消息', e.message, true); }
+};
+
+document.getElementById('拒刷钮').onclick = async () => {
+  const eid = document.getElementById('回放事件号').value.trim();
+  设消息('回放消息', '正在持回放令牌回刷正式写口 …', false);
+  try {
+    const r = await fetch('/api/投递', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({事件号: eid, 回放: true, 来源: '回放', 回放令牌: document.getElementById('令牌展示').textContent || 'RP-demo'}),
+    });
+    const j = await r.json().catch(() => ({}));
+    document.getElementById('回放结果').textContent = 'HTTP ' + r.status + '\n' + JSON.stringify(j, null, 2);
+    if (r.status === 409 || j.写口隔离) {
+      设消息('回放消息', '写口隔离生效：正式写口拒绝回刷（HTTP ' + r.status + '），水位不变。', false);
+    } else {
+      设消息('回放消息', '意外：写口未拒绝（HTTP ' + r.status + '）', true);
+    }
+    await 刷水位();
+  } catch (e) { 设消息('回放消息', e.message, true); }
+};
+
 document.getElementById('投递钮').onclick = async () => {
   const 消息 = document.getElementById('消息');
   try {
@@ -56,15 +220,19 @@ document.getElementById('投递钮').onclick = async () => {
       强制失败: document.getElementById('强制失败').checked,
     });
     消息.textContent = JSON.stringify(rep);
-    await 刷表();
+    await Promise.all([刷表(), 刷水位()]);
   } catch (e) { 消息.textContent = e.message; }
 };
 document.getElementById('批量钮').onclick = async () => {
   const rep = await 投递台.postJSON('/api/投递/批量重试', {});
   document.getElementById('消息').textContent = '批量 '+rep.条数;
-  await 刷表();
+  await Promise.all([刷表(), 刷水位()]);
 };
-刷表();
+
+(async function 初始化() {
+  await Promise.all([刷表(), 刷回放表(), 刷水位()]);
+  setInterval(刷水位, 8000);
+})();
 </script>
 
 </body>

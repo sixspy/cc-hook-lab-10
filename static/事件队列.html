@@ -36,8 +36,9 @@
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="入队钮">入队（待投）</button>
   <button class="按钮 次" type="button" id="夹具钮">灌夹具样例</button>
+  <p class="说明">事件队列策略：入队即「待投」，经签名投递转「投递中/已投递」，失败重试耗尽入「死信」。对已投递事件的补放属于<b>回放</b>，不在本队列重新入队、不走正式写口，请去<a href="/投递流水.html">投递流水 · 回放旁路</a>。</p>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>载荷摘要</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷"><div class="表绕"><table><thead><tr><th>事件号</th><th>事件类型</th><th>端点键</th><th>载荷摘要</th><th>中文命运</th><th>详情</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
@@ -46,8 +47,14 @@ async function 刷表() {
   const rows = await 投递台.getJSON('/api/事件');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+    const tr = 投递台.行('<td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.事件类型)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.载荷摘要)+'</td><td></td><td></td>');
+    tr.children[4].appendChild(投递台.徽章(r.状态));
+    const link = document.createElement('a');
+    link.href = '/事件详情.html?事件号=' + encodeURIComponent(r.事件号);
+    link.textContent = '详情/策略';
+    link.className = '按钮 次 小';
+    tr.children[5].appendChild(link);
+    tb.appendChild(tr);
   }
 }
 document.getElementById('入队钮').onclick = async () => {

@@ -31,18 +31,29 @@
 <section class="卷">
   <label>事件号</label><input id="事件号"/>
   <button class="按钮" type="button" id="查">查询</button>
-  <pre id="出" class="说明"></pre>
+  <a class="按钮 次" id="去回放" href="/投递流水.html">去投递流水回放</a>
+  <p class="说明">事件详情与队列、流水、互证同源；其中 <code>尝试</code> 为正式投递集，<code>回放旁路</code> 为不计水位的影子账册。</p>
+  <pre id="出" class="说明 结果盒"></pre>
 </section>
 
   </main>
 
 <script>
-document.getElementById('查').onclick = async () => {
+async function 查询() {
   try {
-    const id = document.getElementById('事件号').value;
-    document.getElementById('出').textContent = JSON.stringify(await 投递台.getJSON('/api/事件/'+encodeURIComponent(id)), null, 2);
+    const id = document.getElementById('事件号').value.trim();
+    if (!id) { document.getElementById('出').textContent = '请输入事件号，或从事件队列点「详情/策略」进入。'; return; }
+    const j = await 投递台.getJSON('/api/事件/'+encodeURIComponent(id));
+    document.getElementById('出').textContent = JSON.stringify(j, null, 2);
+    document.getElementById('去回放').href = '/投递流水.html';
   } catch (e) { document.getElementById('出').textContent = e.message; }
-};
+}
+document.getElementById('查').onclick = 查询;
+(function 自填(){
+  const q = new URLSearchParams(location.search);
+  const id = q.get('事件号') || q.get('id') || q.get('eid');
+  if (id) { document.getElementById('事件号').value = id; 查询(); }
+})();
 </script>
 
 </body>

@@ -4,7 +4,7 @@ from pathlib import Path
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from app import seed
-from app.services import 会话, 入队, 投递, 死信, 重试, 互证, 端点, 夹具, 说明, 签名目录
+from app.services import 会话, 入队, 投递, 死信, 重试, 互证, 端点, 夹具, 说明, 签名目录, 回放, 水位
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -97,7 +97,77 @@ def create_app() -> Flask:
     def api_投递():
         body = request.get_json(force=True, silent=True) or {}
         try:
-            return jsonify(投递.投递一次(body["事件号"], bool(body.get("强制失败"))))
+            eid = body["事件号"]
+            强制 = bool(body.get("强制失败"))
+            # 其余字段（回放标记 / 回放令牌 / 来源 / 轨道 …）原样透传给写口隔离闸
+            额外 = {k: v for k, v in body.items() if k not in ("事件号", "强制失败")}
+            return jsonify(投递.投递一次(eid, 强制, **额外))
+        except 回放.写口隔离错误 as e:
+            键 = getattr(e, "锁键", None)
+            if not 键 and body.get("事件号"):
+                键 = 回放.锁键(str(body["事件号"]))
+            return jsonify({
+                "错误": str(e), "写口隔离": True, "拒写口回刷": True,
+                "工程形态": 回放.工程形态, "骨签": 回放.骨签, "锁键": 键,
+            }), getattr(e, "状态码", 409)
+        except (KeyError, ValueError) as e:
+            return jsonify({"错误": str(e)}), 400
+
+    @app.get("/api/水位")
+    def api_水位():
+        return jsonify(水位.读水位())
+
+    @app.get("/api/回放")
+    def api_回放列表():
+        # 与其它集合口一致：根路径返回账册数组；聚合态走 /api/回放/概览
+        return jsonify(回放.列表())
+
+    @app.get("/api/回放/概览")
+    @app.get("/api/回放台")
+    @app.get("/api/回放/状态")
+    def api_回放概览():
+        return jsonify(回放.概览())
+
+    @app.get("/api/回放/账册")
+    @app.get("/api/回放/列表")
+    def api_回放账册():
+        return jsonify(回放.列表())
+
+    @app.get("/api/回放/令牌")
+    def api_回放令牌列表():
+        return jsonify(回放.令牌列表())
+
+    @app.post("/api/回放/令牌")
+    def api_回放令牌签发():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            return jsonify(回放.签发令牌(body.get("事件号"), body.get("理由", "")))
+        except (KeyError, ValueError) as e:
+            return jsonify({"错误": str(e)}), 400
+
+    @app.post("/api/回放")
+    def api_回放执行():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            return jsonify(回放.发起回放(body))
+        except 回放.写口隔离错误 as e:
+            键 = getattr(e, "锁键", None)
+            if not 键 and body.get("事件号"):
+                键 = 回放.锁键(str(body["事件号"]))
+            return jsonify({"错误": str(e), "写口隔离": True, "拒写口回刷": True,
+                            "工程形态": 回放.工程形态, "骨签": 回放.骨签, "锁键": 键}), getattr(e, "状态码", 409)
+        except (KeyError, ValueError) as e:
+            return jsonify({"错误": str(e)}), 400
+
+    @app.post("/api/夹具回放/<name>")
+    def api_夹具回放(name):
+        try:
+            体 = 夹具.读取(name)
+            items = 体.get("回放") or []
+            out = [回放.发起回放(it) for it in items]
+            return jsonify({"夹具": name, "骨签": 体.get("骨签"), "回放": out, "条数": len(out)})
+        except FileNotFoundError:
+            return jsonify({"错误": name}), 404
         except (KeyError, ValueError) as e:
             return jsonify({"错误": str(e)}), 400
 
@@ -128,6 +198,13 @@ def create_app() -> Flask:
     @app.get("/api/端点")
     def api_端点():
         return jsonify(签名目录.端点列表())
+
+    @app.get("/api/端点/<key>")
+    def api_端点详情(key):
+        d = 端点.详情(key)
+        if not d:
+            return jsonify({"错误": "无此端点"}), 404
+        return jsonify(d)
 
     @app.post("/api/端点")
     def api_端点登记():

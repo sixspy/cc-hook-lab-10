@@ -38,9 +38,39 @@ CREATE TABLE IF NOT EXISTS 投递尝试 (
   响应码 INTEGER NOT NULL DEFAULT 0,
   说明 TEXT NOT NULL DEFAULT '',
   投递时 TEXT NOT NULL,
+  票号 TEXT NOT NULL DEFAULT '',
+  轨道 TEXT NOT NULL DEFAULT '正式',
+  回放令牌 TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (事件号) REFERENCES 事件(事件号),
   FOREIGN KEY (端点键) REFERENCES 投递端点(端点键)
 );
+CREATE TABLE IF NOT EXISTS 回放令牌 (
+  令牌 TEXT PRIMARY KEY,
+  事件号 TEXT NOT NULL,
+  票号 TEXT NOT NULL DEFAULT '',
+  状态 TEXT NOT NULL DEFAULT '待使用',
+  理由 TEXT NOT NULL DEFAULT '',
+  签发时 TEXT NOT NULL,
+  核销时 TEXT NOT NULL DEFAULT '',
+  回放号 TEXT NOT NULL DEFAULT '',
+  详情 TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS 回放账册 (
+  回放号 TEXT PRIMARY KEY,
+  令牌 TEXT NOT NULL,
+  事件号 TEXT NOT NULL,
+  票号 TEXT NOT NULL DEFAULT '',
+  端点键 TEXT NOT NULL DEFAULT '',
+  签名摘要 TEXT NOT NULL DEFAULT '',
+  状态 TEXT NOT NULL DEFAULT '回放成功',
+  响应码 INTEGER NOT NULL DEFAULT 200,
+  说明 TEXT NOT NULL DEFAULT '',
+  工程形态 TEXT NOT NULL DEFAULT '旁路账册',
+  锁键 TEXT NOT NULL DEFAULT '',
+  回放时 TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_回放账册_事件 ON 回放账册(事件号);
+CREATE INDEX IF NOT EXISTS idx_回放令牌_事件 ON 回放令牌(事件号);
 CREATE TABLE IF NOT EXISTS 死信 (
   死信号 TEXT PRIMARY KEY,
   事件号 TEXT NOT NULL UNIQUE,
@@ -75,9 +105,46 @@ def 此刻() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _已有列(conn, 表: str) -> set:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({表})").fetchall()}
+
+
+def _迁移(conn) -> None:
+    """旧卷增量补列 / 回填，保证 smoke 已建的库也能接线 hook-10。"""
+    cols = _已有列(conn, "投递尝试")
+    补列 = {
+        "票号": "ALTER TABLE 投递尝试 ADD COLUMN 票号 TEXT NOT NULL DEFAULT ''",
+        "轨道": "ALTER TABLE 投递尝试 ADD COLUMN 轨道 TEXT NOT NULL DEFAULT '正式'",
+        "回放令牌": "ALTER TABLE 投递尝试 ADD COLUMN 回放令牌 TEXT NOT NULL DEFAULT ''",
+    }
+    for 名, sql in 补列.items():
+        if 名 not in cols:
+            conn.execute(sql)
+    conn.execute(
+        "UPDATE 投递尝试 SET 票号 = 'PIAO-' || 事件号 WHERE COALESCE(票号, '') = ''"
+    )
+    conn.execute(
+        "UPDATE 投递尝试 SET 轨道 = '正式' WHERE COALESCE(轨道, '') = ''"
+    )
+    # hook-10 签名规策略（INSERT OR IGNORE，不覆盖人工改过的值）
+    for k, v in {
+        "骨签": "hook-10-回放旁路禁写现行",
+        "回放工程形态": "旁路账册",
+        "回放令牌前缀": "RP",
+        "写口策略": "正式写口见回放令牌/回放标记即拒写口回刷（409）",
+        "现行水位口径": "只读正式投递集：事件已投递数 / 轨道=正式 的成功流水",
+        "同锁策略": "回放与正式投递按事件号打同一把并发投递锁",
+    }.items():
+        conn.execute(
+            "INSERT OR IGNORE INTO 签名规(键,值) VALUES (?,?)", (k, v)
+        )
+    conn.commit()
+
+
 def 初始化库() -> None:
     conn = 连接()
     conn.executescript(建表)
+    _迁移(conn)
     if conn.execute("SELECT COUNT(*) AS c FROM 用户").fetchone()["c"] == 0:
         conn.execute("INSERT INTO 用户(账号,密码哈希,角色) VALUES (?,?,?)", ("admin", "123456", "管理员"))
     if conn.execute("SELECT COUNT(*) AS c FROM 签名规").fetchone()["c"] == 0:

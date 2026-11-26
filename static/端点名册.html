@@ -37,6 +37,12 @@
   <button class="按钮" type="button" id="登记">登记端点</button>
 </section>
 <section class="卷"><div class="表绕"><table><thead><tr><th>端点键</th><th>名称</th><th>回调URL</th><th>密钥版本</th><th>启用</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷" id="详情卷" style="display:none;">
+  <h2 id="详情标题">端点名册详情 · 联查</h2>
+  <div class="指标" id="详情卡"></div>
+  <p class="说明" id="详情说明"></p>
+  <pre id="详情" class="说明 结果盒"></pre>
+</section>
 
   </main>
 
@@ -47,10 +53,13 @@ async function 刷表() {
   for (const r of rows) {
     const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td>'+投递台.安全文本(r.密钥版本)+'</td><td></td><td></td>');
     tr.children[4].appendChild(投递台.徽章(r.启用 ? '启用' : '停用'));
-    const btn = document.createElement('button'); btn.className='按钮 次'; btn.type='button';
+    const detail = document.createElement('button'); detail.className='按钮 次 小'; detail.type='button';
+    detail.textContent = '详情';
+    detail.onclick = () => 看详情(r.端点键);
+    const btn = document.createElement('button'); btn.className='按钮 次 小'; btn.type='button';
     btn.textContent = r.启用 ? '停用' : '启用';
     btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用}); await 刷表(); };
-    tr.children[5].appendChild(btn); tb.appendChild(tr);
+    tr.children[5].appendChild(detail); tr.children[5].appendChild(document.createTextNode(' ')); tr.children[5].appendChild(btn); tb.appendChild(tr);
   }
 }
 document.getElementById('登记').onclick = async () => {
@@ -65,6 +74,21 @@ document.getElementById('登记').onclick = async () => {
     await 刷表();
   } catch (e) { document.getElementById('消息').textContent = e.message; }
 };
+async function 看详情(key) {
+  const d = await 投递台.getJSON('/api/端点/' + encodeURIComponent(key));
+  document.getElementById('详情卷').style.display = '';
+  document.getElementById('详情标题').textContent = '端点名册详情 · ' + key;
+  const c = d.计数 || {};
+  const cards = [['名称', d.名称], ['回调URL', d.回调URL], ['密钥版本', d.密钥版本],
+    ['启用', d.启用 ? '启用' : '停用'], ['事件数', c.事件], ['已投递', c.已投递],
+    ['成功流水', c.成功流水], ['死信', c.死信]];
+  document.getElementById('详情卡').innerHTML = cards.map(([k,v]) =>
+    '<div class="卡"><small>'+投递台.安全文本(k)+'</small><b style="font-size:1rem;">'+投递台.安全文本(v)+'</b></div>').join('');
+  document.getElementById('详情说明').textContent =
+    '账实同源：下列联查与事件队列、投递流水、投递互证共用同一库表；回放旁路不计入该端点正式成功流水。';
+  document.getElementById('详情').textContent = JSON.stringify(d, null, 2);
+  document.getElementById('详情卷').scrollIntoView({behavior:'smooth'});
+}
 刷表();
 </script>
 

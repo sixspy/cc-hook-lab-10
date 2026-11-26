@@ -29,8 +29,10 @@
     </header>
 
 <section class="卷">
-  <button class="按钮" type="button" id="跑">跑互证</button>
-  <pre id="出" class="说明"></pre>
+  <button class="按钮" type="button" id="跑">跑互证（全扫 · 含回放同票核对）</button>
+  <div id="结论" class="指标" style="margin:10px 0;"></div>
+  <pre id="出" class="说明 结果盒"></pre>
+  <p class="说明">口径：互证只把 <b>正式投递集</b> 计入「已投递」；hook-10 回放走旁路账册，单列「回放旁路数」，并按票号 <code>PIAO-&lt;事件号&gt;</code> 做影子↔正式同票核对，绝不把回放副作用当成正式投递。</p>
 </section>
 <section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
@@ -44,8 +46,24 @@ async function 刷表() {
     tb.appendChild(投递台.行('<td>'+r.批次号+'</td><td>'+投递台.安全文本(r.时刻)+'</td><td>'+r.事件总数+'</td><td>'+r.已投递数+'</td><td>'+r.死信数+'</td><td>'+r.待投数+'</td><td>'+(r.是否对齐?'是':'否')+'</td><td>'+投递台.安全文本(r.说明)+'</td>'));
   }
 }
+function 渲染结论(j) {
+  const box = document.getElementById('结论');
+  const tk = j.同票核对 || j.同票 || {};
+  const cards = [
+    ['事件总数', j.事件总数], ['已投递（正式）', j.已投递数],
+    ['死信', j.死信数], ['待投', j.待投数],
+    ['回放旁路（不计入）', j.回放旁路数 ?? 0],
+    ['拒写口回刷', j.拒写口回刷数 ?? 0],
+    ['同票核对', tk.对齐 ? '对齐 ✓' : '撕裂 ✗'],
+    ['总结论', j.是否全部对齐 ? '全部对齐 ✓' : '有偏差 ✗'],
+  ];
+  box.innerHTML = cards.map(([k, v]) =>
+    '<div class="卡"><small>'+投递台.安全文本(k)+'</small><b>'+投递台.安全文本(v)+'</b></div>').join('');
+}
 document.getElementById('跑').onclick = async () => {
-  document.getElementById('出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
+  const j = await 投递台.postJSON('/api/互证/跑',{});
+  document.getElementById('出').textContent = JSON.stringify(j, null, 2);
+  渲染结论(j);
   await 刷表();
 };
 刷表();

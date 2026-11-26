@@ -34,13 +34,37 @@
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="保存">保存签名规</button>
 </section>
-<section class="卷"><pre id="规" class="说明"></pre></section>
+<section class="卷">
+  <h2>签名规目录 · 策略</h2>
+  <p class="说明">签名算法 HMAC-SHA256，密钥版本随端点走。下列策略与投递、重试死信、回放旁路写口隔离共用同一套 <code>签名规</code> 表（账实同源）。hook-10 相关：<b>回放工程形态=旁路账册</b>、<b>写口策略=拒写口回刷</b>、<b>现行水位口径=只读正式投递集</b>。</p>
+  <div class="表绕"><table><thead><tr><th>键</th><th>当前值</th><th>中文策略解读</th></tr></thead><tbody id="目录"></tbody></table></div>
+</section>
+<section class="卷"><pre id="规" class="说明 结果盒"></pre></section>
 
   </main>
 
 <script>
+const 解读 = {
+  '最大重试': '失败达到此次数即入死信匣',
+  '产品名': '本控制台名称',
+  '主链': '端点→入队→签名投递→重试死信→互证',
+  '签名算法': '回调签名算法',
+  '超时秒': '投递/闸口超时阈值',
+  '骨签': '本题骨签编号',
+  '回放工程形态': '整仓唯一形态：旁路账册（令牌+独立账册）',
+  '回放令牌前缀': '回放令牌统一前缀，便于写口识别',
+  '写口策略': '正式写口见回放令牌/标记即拒写口回刷',
+  '现行水位口径': '水位只统计正式投递集，回放不抬水位',
+  '同锁策略': '回放与正式投递按事件号打同一把锁',
+};
 async function 刷() {
-  document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
+  const 规 = await 投递台.getJSON('/api/签名规');
+  document.getElementById('规').textContent = JSON.stringify(规, null, 2);
+  const tb = document.getElementById('目录'); tb.innerHTML = '';
+  for (const [k, v] of Object.entries(规)) {
+    const tr = 投递台.行('<td><b>'+投递台.安全文本(k)+'</b></td><td>'+投递台.安全文本(v)+'</td><td>'+投递台.安全文本(解读[k] || '自定义签名规策略')+'</td>');
+    tb.appendChild(tr);
+  }
 }
 document.getElementById('保存').onclick = async () => {
   try {

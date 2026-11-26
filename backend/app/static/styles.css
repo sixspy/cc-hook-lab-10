@@ -123,3 +123,35 @@
     .登录壳 { grid-template-columns: 1fr; }
     .登录左 { padding: 28px; }
   }
+
+  /* ===== hook-10 回放旁路 ===== */
+  .hook10 { border-color: var(--靛浅); box-shadow: 0 0 0 1px rgba(44,82,130,0.12); }
+  .hook10 h2 { margin: 0 0 8px; color: var(--靛); font-size: 1.15rem; }
+  .骨签 { font-size: 12px; font-weight: 500; color: var(--险); letter-spacing: 0.04em; }
+  .回放控制 { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .回放控制 label { font-size: 13px; color: var(--靛); }
+  .回放控制 input {
+    padding: 7px 9px; border: 1px solid var(--边); border-radius: 6px; min-width: 200px;
+    font-size: 13px; background: #fff; color: var(--墨);
+  }
+  .按钮行 { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin: 6px 0; }
+  .按钮.小 { padding: 3px 10px; font-size: 12px; }
+  .按钮.危 { background: var(--险); color: #fff; border-color: var(--险); }
+  .按钮.危:hover { filter: brightness(1.08); }
+  .令牌展示 { width: 100%; font-size: 13px; margin: 4px 0; }
+  .令牌展示 code, code {
+    background: #eef2f8; padding: 1px 6px; border-radius: 5px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px;
+    word-break: break-all;
+  }
+  .结果盒 {
+    width: 100%; max-height: 240px; overflow: auto; background: #10233c; color: #d7e6ff;
+    padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; margin: 6px 0 0;
+  }
+  .消息.好 { color: var(--好); }
+  .消息.错 { color: var(--险); }
+  .空态 { text-align: center; color: #8a7d68; padding: 18px 8px; }
+  .徽章.旁路成功, .徽章.回放成功 { background: #e6f4ea; color: var(--好); }
+  .徽章.已拒刷 { background: #fbe9e7; color: var(--险); }
+  .徽章.已核销 { background: #e8eef5; color: var(--靛); }
+  .徽章.待使用 { background: #fdf3dd; color: var(--警); }

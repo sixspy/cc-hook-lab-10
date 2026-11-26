@@ -36,3 +36,36 @@ def 改启用(端点键: str, 启用: bool) -> dict:
         return dict(conn.execute("SELECT * FROM 投递端点 WHERE 端点键=?", (端点键,)).fetchone())
     finally:
         conn.close()
+
+
+def 详情(端点键: str) -> dict | None:
+    """端点名册详情 + 联查：该端点下的事件、正式投递流水与计数（账实同源）。"""
+    conn = 连接()
+    try:
+        ep = conn.execute("SELECT * FROM 投递端点 WHERE 端点键=?", (端点键,)).fetchone()
+        if not ep:
+            return None
+        d = dict(ep)
+        d["事件"] = [dict(r) for r in conn.execute(
+            "SELECT * FROM 事件 WHERE 端点键=? ORDER BY 入队时 DESC LIMIT 50", (端点键,)
+        ).fetchall()]
+        d["投递流水"] = [dict(r) for r in conn.execute(
+            "SELECT * FROM 投递尝试 WHERE 端点键=? "
+            "AND COALESCE(轨道,'正式')='正式' AND COALESCE(回放令牌,'')='' "
+            "ORDER BY 投递时 DESC LIMIT 50", (端点键,)
+        ).fetchall()]
+        d["计数"] = {
+            "事件": conn.execute("SELECT COUNT(*) c FROM 事件 WHERE 端点键=?", (端点键,)).fetchone()["c"],
+            "已投递": conn.execute(
+                "SELECT COUNT(*) c FROM 事件 WHERE 端点键=? AND 状态='已投递'", (端点键,)
+            ).fetchone()["c"],
+            "成功流水": conn.execute(
+                "SELECT COUNT(*) c FROM 投递尝试 WHERE 端点键=? AND 状态='成功'", (端点键,)
+            ).fetchone()["c"],
+            "死信": conn.execute(
+                "SELECT COUNT(*) c FROM 死信 WHERE 端点键=?", (端点键,)
+            ).fetchone()["c"],
+        }
+        return d
+    finally:
+        conn.close()

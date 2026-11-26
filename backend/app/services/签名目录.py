@@ -69,17 +69,31 @@ def 事件一条(事件号: str) -> dict | None:
         ).fetchall()]
         dl = conn.execute("SELECT * FROM 死信 WHERE 事件号=?", (事件号,)).fetchone()
         d["死信"] = dict(dl) if dl else None
+        try:
+            d["回放旁路"] = [dict(x) for x in conn.execute(
+                "SELECT * FROM 回放账册 WHERE 事件号=? ORDER BY 回放时 DESC", (事件号,)
+            ).fetchall()]
+        except Exception:
+            d["回放旁路"] = []
         return d
     finally:
         conn.close()
 
 
 def 投递列表() -> list:
+    """现行投递流水：只读正式投递集（轨道=正式 且 无回放令牌）。回放旁路行不在此。"""
     conn = 连接()
     try:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM 投递尝试 ORDER BY 投递时 DESC LIMIT 200"
-        ).fetchall()]
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM 投递尝试 "
+                "WHERE COALESCE(轨道,'正式')='正式' AND COALESCE(回放令牌,'')='' "
+                "ORDER BY 投递时 DESC LIMIT 200"
+            ).fetchall()]
+        except Exception:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM 投递尝试 ORDER BY 投递时 DESC LIMIT 200"
+            ).fetchall()]
     finally:
         conn.close()
 
